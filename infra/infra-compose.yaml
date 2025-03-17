@@ -1,0 +1,159 @@
+
+version: '3'
+
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - infra
+
+  broker:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: broker
+    ports:
+    # To learn about configuring Kafka for access across networks see
+    # https://www.confluent.io/blog/kafka-client-cannot-connect-to-broker-on-aws-on-docker-etc/
+      - "9092:9092"
+      - "9093:9093"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_MESSAGE_MAX_BYTES: 419430400
+      KAFKA_LISTENERS: PLAINTEXT_INTERNAL://0.0.0.0:29092,PLAINTEXT_C://0.0.0.0:9093,PLAINTEXT_L://0.0.0.0:9092,
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_INTERNAL://broker:29092,PLAINTEXT_L://localhost:9092,PLAINTEXT_C://broker:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_L:PLAINTEXT,PLAINTEXT_C:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+    networks:
+      - infra
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    depends_on: 
+      - broker
+    ports:
+      - "7777:8080"
+    restart: always
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=broker
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=broker:9093
+      - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
+    networks:
+      - infra
+
+  scm:
+    image: apache/ozone:1.3.0
+    container_name: scm
+    command: [ "ozone", "scm" ]
+    environment:
+      - OZONE-SITE.XML_ozone.scm.names=scm
+      - OZONE-SITE.XML_ozone.scm.client.address=scm:9860
+      - OZONE-SITE.XML_ozone.scm.block.client.address=scm:9860
+      - OZONE-SITE.XML_ozone.scm.datanode.address=scm:9860
+      - OZONE-SITE.XML_ozone.scm.grpc.port=9893
+      - OZONE-SITE.XML_ozone.metadata.dirs=/data/scm
+    volumes:
+      - scm_data:/data/scm
+    ports:
+      - "9876:9876"
+      - "9893:9893"
+    networks:
+      - infra
+
+  om:
+    image: apache/ozone:1.3.0
+    container_name: om
+    command: [ "ozone", "om" ]
+    environment:
+      - OZONE-SITE.XML_ozone.om.address=om
+      - OZONE-SITE.XML_ozone.scm.names=scm
+      - OZONE-SITE.XML_ozone.metadata.dirs=/data/om
+    volumes:
+      - om_data:/data/om
+    ports:
+      - "9874:9874"
+    networks:
+      - infra
+    depends_on:
+      - scm
+
+  recon:
+    image: apache/ozone:1.3.0
+    container_name: recon
+    command: [ "ozone", "recon" ]
+    environment:
+      - OZONE-SITE.XML_ozone.recon.address=recon
+      - OZONE-SITE.XML_ozone.scm.names=scm
+    ports:
+      - "9888:9888"
+    networks:
+      - infra
+    depends_on:
+      - scm
+      - om
+
+  datanode1:
+    image: apache/ozone:1.3.0
+    container_name: datanode1
+    command: [ "ozone", "datanode" ]
+    environment:
+      - OZONE-SITE.XML_ozone.scm.names=scm
+      - OZONE-SITE.XML_ozone.metadata.dirs=/data/datanode1
+    volumes:
+      - dn1_data:/data/datanode1
+    networks:
+      - infra
+    depends_on:
+      - scm
+      - om
+
+  datanode2:
+    image: apache/ozone:1.3.0
+    container_name: datanode2
+    command: [ "ozone", "datanode" ]
+    environment:
+      - OZONE-SITE.XML_ozone.scm.names=scm
+      - OZONE-SITE.XML_ozone.metadata.dirs=/data/datanode2
+    volumes:
+      - dn2_data:/data/datanode2
+    networks:
+      - infra
+    depends_on:
+      - scm
+      - om
+
+  datanode3:
+    image: apache/ozone:1.3.0
+    container_name: datanode3
+    command: [ "ozone", "datanode" ]
+    environment:
+      - OZONE-SITE.XML_ozone.scm.names=scm
+      - OZONE-SITE.XML_ozone.metadata.dirs=/data/datanode3
+    volumes:
+      - dn3_data:/data/datanode3
+    networks:
+      - infra
+    depends_on:
+      - scm
+      - om
+
+volumes:
+  scm_data:
+  om_data:
+  dn1_data:
+  dn2_data:
+  dn3_data:
+
+networks:
+  infra:
+    driver: bridge

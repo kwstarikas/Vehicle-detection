@@ -1,7 +1,26 @@
 
+
+x-image:
+   &image
+   image: ${OZONE_IMAGE:-apache/ozone}:${OZONE_IMAGE_VERSION:-1.4.1}${OZONE_IMAGE_FLAVOR:-}
+
+x-common-config:
+   &common-config
+   OZONE-SITE.XML_hdds.datanode.dir: "/data/hdds"
+   OZONE-SITE.XML_ozone.metadata.dirs: "/data/metadata"
+   OZONE-SITE.XML_ozone.om.address: "om"
+   OZONE-SITE.XML_ozone.om.http-address: "om:9874"
+   OZONE-SITE.XML_ozone.recon.address: "recon:9891"
+   OZONE-SITE.XML_ozone.recon.db.dir: "/data/metadata/recon"
+   OZONE-SITE.XML_ozone.replication: "1"
+   OZONE-SITE.XML_ozone.scm.block.client.address: "scm"
+   OZONE-SITE.XML_ozone.scm.client.address: "scm"
+   OZONE-SITE.XML_ozone.scm.datanode.id.dir: "/data"
+   OZONE-SITE.XML_ozone.scm.names: "scm"
+   no_proxy: "om,recon,scm,s3g,localhost,127.0.0.1"
+
+
 version: '3'
-
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.0.1
@@ -50,109 +69,66 @@ services:
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
     networks:
       - infra
-
-  scm:
-    image: apache/ozone:1.3.0
-    container_name: scm
-    command: [ "ozone", "scm" ]
-    environment:
-      - OZONE-SITE.XML_ozone.scm.names=scm
-      - OZONE-SITE.XML_ozone.scm.client.address=scm:9860
-      - OZONE-SITE.XML_ozone.scm.block.client.address=scm:9860
-      - OZONE-SITE.XML_ozone.scm.datanode.address=scm:9860
-      - OZONE-SITE.XML_ozone.scm.grpc.port=9893
-      - OZONE-SITE.XML_ozone.metadata.dirs=/data/scm
-    volumes:
-      - scm_data:/data/scm
+  datanode:
+    <<: *image
     ports:
-      - "9876:9876"
-      - "9893:9893"
+        - 9864
+    command: ["ozone","datanode"]
+    environment:
+        <<: *common-config
+    volumes: 
+      - dn:/data
     networks:
-      - infra
-
+      infra:
   om:
-    image: apache/ozone:1.3.0
-    container_name: om
-    command: [ "ozone", "om" ]
-    environment:
-      - OZONE-SITE.XML_ozone.om.address=om
-      - OZONE-SITE.XML_ozone.scm.names=scm
-      - OZONE-SITE.XML_ozone.metadata.dirs=/data/om
-    volumes:
-      - om_data:/data/om
+    <<: *image
     ports:
-      - "9874:9874"
+        - 9874:9874
+    environment:
+        <<: *common-config
+        ENSURE_OM_INITIALIZED: /data/metadata/om/current/VERSION
+        WAITFOR: scm:9876
+    command: ["ozone","om"]
+    volumes:
+      - om:/data
     networks:
-      - infra
-    depends_on:
-      - scm
-
+      infra:
+  scm:
+    <<: *image
+    ports:
+        - 9876:9876
+    environment:
+        <<: *common-config
+        ENSURE_SCM_INITIALIZED: /data/metadata/scm/current/VERSION
+    command: ["ozone","scm"]
+    volumes:
+      - scm:/data
+    networks:
+      infra:
   recon:
-    image: apache/ozone:1.3.0
-    container_name: recon
-    command: [ "ozone", "recon" ]
-    environment:
-      - OZONE-SITE.XML_ozone.recon.address=recon
-      - OZONE-SITE.XML_ozone.scm.names=scm
+    <<: *image
     ports:
-      - "9888:9888"
-    networks:
-      - infra
-    depends_on:
-      - scm
-      - om
-
-  datanode1:
-    image: apache/ozone:1.3.0
-    container_name: datanode1
-    command: [ "ozone", "datanode" ]
+        - 9888:9888
     environment:
-      - OZONE-SITE.XML_ozone.scm.names=scm
-      - OZONE-SITE.XML_ozone.metadata.dirs=/data/datanode1
-    volumes:
-      - dn1_data:/data/datanode1
+        <<: *common-config
+    command: ["ozone","recon"]
     networks:
-      - infra
-    depends_on:
-      - scm
-      - om
-
-  datanode2:
-    image: apache/ozone:1.3.0
-    container_name: datanode2
-    command: [ "ozone", "datanode" ]
+      infra:
+  s3g:
+    <<: *image
+    ports:
+        - 9878:9878
     environment:
-      - OZONE-SITE.XML_ozone.scm.names=scm
-      - OZONE-SITE.XML_ozone.metadata.dirs=/data/datanode2
-    volumes:
-      - dn2_data:/data/datanode2
+        <<: *common-config
+    command: ["ozone","s3g"]
     networks:
-      - infra
-    depends_on:
-      - scm
-      - om
-
-  datanode3:
-    image: apache/ozone:1.3.0
-    container_name: datanode3
-    command: [ "ozone", "datanode" ]
-    environment:
-      - OZONE-SITE.XML_ozone.scm.names=scm
-      - OZONE-SITE.XML_ozone.metadata.dirs=/data/datanode3
-    volumes:
-      - dn3_data:/data/datanode3
-    networks:
-      - infra
-    depends_on:
-      - scm
-      - om
+      infra:
 
 volumes:
-  scm_data:
-  om_data:
-  dn1_data:
-  dn2_data:
-  dn3_data:
+  om:
+  dn:
+  scm:
+
 
 networks:
   infra:
